@@ -37,9 +37,9 @@ def add_marketing_metrics(df):
 
 # ---------- STEP 4: LOAD BUSINESS DATA & MERGE ----------
 
-fb = load_marketing_csv("data/Facebook.csv", "Facebook")
-gg = load_marketing_csv("data/Google.csv", "Google")
-tt = load_marketing_csv("data/TikTok.csv", "TikTok")
+fb = load_marketing_csv("Lifesight/data/Facebook.csv", "Facebook")
+gg = load_marketing_csv("Lifesight/data/Google.csv", "Google")
+tt = load_marketing_csv("Lifesight/data/TikTok.csv", "TikTok")
 
 marketing = pd.concat([fb, gg, tt], ignore_index=True)
 marketing = add_marketing_metrics(marketing)
