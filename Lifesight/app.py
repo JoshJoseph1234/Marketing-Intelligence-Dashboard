@@ -8,12 +8,10 @@ st.set_page_config(page_title="Marketing Intelligence Dashboard", layout="wide")
 # ---------- STEP 2: LOAD & CLEAN MARKETING DATA ----------
 
 def load_marketing_csv(path, channel_name):
-    """Load a marketing CSV (Facebook/Google/TikTok) and clean it"""
     df = pd.read_csv(path, parse_dates=['date'])
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
     df['channel'] = channel_name
 
-    # fix column naming variations
     rename_map = {}
     if 'impression' in df.columns and 'impressions' not in df.columns:
         rename_map['impression'] = 'impressions'
@@ -30,7 +28,6 @@ def load_marketing_csv(path, channel_name):
 # ---------- STEP 3: CALCULATE METRICS ----------
 
 def add_marketing_metrics(df):
-    """Add CTR, CPC, CPM, and ROAS to marketing data"""
     df = df.copy()
     df['ctr'] = np.where(df['impressions'] > 0, df['clicks'] / df['impressions'], 0)
     df['cpc'] = np.where(df['clicks'] > 0, df['spend'] / df['clicks'], np.nan)
@@ -40,14 +37,13 @@ def add_marketing_metrics(df):
 
 # ---------- STEP 4: LOAD BUSINESS DATA & MERGE ----------
 
-# Load marketing CSVs
 fb = load_marketing_csv("data/Facebook.csv", "Facebook")
 gg = load_marketing_csv("data/Google.csv", "Google")
 tt = load_marketing_csv("data/TikTok.csv", "TikTok")
+
 marketing = pd.concat([fb, gg, tt], ignore_index=True)
 marketing = add_marketing_metrics(marketing)
 
-# Aggregate by date
 daily_marketing = marketing.groupby('date', as_index=False).agg({
     'impressions': 'sum',
     'clicks': 'sum',
@@ -56,14 +52,12 @@ daily_marketing = marketing.groupby('date', as_index=False).agg({
 })
 daily_marketing = add_marketing_metrics(daily_marketing)
 
-# Load business data
 business = pd.read_csv("data/Business.csv", parse_dates=['date'])
 business.columns = business.columns.str.strip().str.lower().str.replace(" ", "_")
 for col in ['orders', 'new_orders', 'new_customers', 'total_revenue', 'gross_profit', 'cogs']:
     if col in business.columns:
         business[col] = pd.to_numeric(business[col], errors="coerce").fillna(0)
 
-# Merge
 merged = pd.merge(business, daily_marketing, on="date", how="left", suffixes=("_bus", "_mkt"))
 merged['attributed_rev_share_of_total'] = np.where(
     merged['total_revenue'] > 0,
@@ -76,7 +70,7 @@ merged['marketing_spend_share_of_gp'] = np.where(
     np.nan
 )
 
-# ---------- STEP 7: FINAL POLISHED DASHBOARD ----------
+# ---------- DASHBOARD ----------
 
 st.title("📊 Marketing Intelligence Dashboard")
 
@@ -94,7 +88,6 @@ channels = st.sidebar.multiselect(
     default=marketing['channel'].unique().tolist()
 )
 
-# Apply filters
 mask = (
     (marketing['date'] >= pd.to_datetime(date_range[0])) &
     (marketing['date'] <= pd.to_datetime(date_range[1])) &
@@ -115,72 +108,109 @@ col3.metric("📈 Avg ROAS", f"{filtered['roas'].mean():.2f}")
 col4.metric("🧾 Attributed Rev Share", 
             f"{(merged_filtered['attributed_rev_share_of_total'].mean() * 100):.1f}%")
 
-# Time series
+# ---------- BENCHMARKS ----------
+
+BENCHMARKS = {"roas": 2.0, "ctr": 0.02, "cpc": 1.5, "spend_share_gp": 0.5}
+
+avg_roas = filtered['roas'].mean()
+avg_ctr = filtered['ctr'].mean()
+avg_cpc = filtered['cpc'].mean()
+spend_share_gp = (merged_filtered['spend'].sum() / merged_filtered['gross_profit'].sum()
+                  if merged_filtered['gross_profit'].sum() > 0 else np.nan)
+
+def status_icon(condition):
+    return "🟢" if condition else "🔴"
+
+st.subheader("🎯 Benchmarks vs Actuals")
+cols = st.columns(4)
+bench_metrics = [
+    ("Avg ROAS", avg_roas, BENCHMARKS['roas'], lambda x, y: x >= y),
+    ("Avg CTR", avg_ctr, BENCHMARKS['ctr'], lambda x, y: x >= y),
+    ("Avg CPC", avg_cpc, BENCHMARKS['cpc'], lambda x, y: x <= y),
+    ("Spend Share of GP", spend_share_gp, BENCHMARKS['spend_share_gp'], lambda x, y: x <= y)
+]
+
+for i, (label, actual, target, func) in enumerate(bench_metrics):
+    icon = status_icon(func(actual, target))
+    display_val = f"{actual:.2f}" if i != 1 and i != 3 else f"{actual:.1%}"
+    display_target = f"{target:.2f}" if i != 1 and i != 3 else f"{target:.0%}"
+    cols[i].metric(label, display_val, f"Target: {display_target} {icon}", delta_color="off")
+
+# Time series chart
 st.subheader("📆 Performance Over Time")
 ts = merged_filtered[['date', 'spend', 'attributed_revenue', 'total_revenue']].fillna(0)
-fig = px.line(
-    ts, x='date',
-    y=['spend', 'attributed_revenue', 'total_revenue'],
-    title="Daily Spend vs Attributed Revenue vs Total Revenue",
-    labels={'value': 'Amount', 'variable': 'Metric'}
-)
+fig = px.line(ts, x='date', y=['spend', 'attributed_revenue', 'total_revenue'],
+              title="Daily Spend vs Attributed Revenue vs Total Revenue",
+              labels={'value': 'Amount', 'variable': 'Metric'})
 st.plotly_chart(fig, use_container_width=True)
 
-# Channel performance
-st.subheader("📌 Channel Performance")
+# Channel performance table with inline benchmark icons
+st.subheader("📌 Channel Performance (with Benchmarks)")
+
 channel_perf = filtered.groupby('channel', as_index=False).agg({
-    'impressions': 'sum',
-    'clicks': 'sum',
     'spend': 'sum',
     'attributed_revenue': 'sum',
-    'roas': 'mean'
+    'impressions': 'sum',
+    'clicks': 'sum'
 })
-st.dataframe(channel_perf)
+
+# Compute metrics
+channel_perf['ctr'] = np.where(channel_perf['impressions'] > 0,
+                               channel_perf['clicks'] / channel_perf['impressions'], 0)
+channel_perf['cpc'] = np.where(channel_perf['clicks'] > 0,
+                               channel_perf['spend'] / channel_perf['clicks'], np.nan)
+channel_perf['roas'] = np.where(channel_perf['spend'] > 0,
+                                channel_perf['attributed_revenue'] / channel_perf['spend'], np.nan)
+
+# Function to append emoji based on benchmark
+def append_icon(value, benchmark, higher_is_better=True, fmt="{:.2f}"):
+    if pd.isna(value):
+        return "N/A"
+    icon = "🟢" if (value >= benchmark if higher_is_better else value <= benchmark) else "🔴"
+    return f"{fmt.format(value)} {icon}"
+
+channel_perf['CTR'] = channel_perf['ctr'].apply(lambda x: append_icon(x, BENCHMARKS['ctr'], True, "{:.1%}"))
+channel_perf['CPC'] = channel_perf['cpc'].apply(lambda x: append_icon(x, BENCHMARKS['cpc'], False, "${:.2f}"))
+channel_perf['ROAS'] = channel_perf['roas'].apply(lambda x: append_icon(x, BENCHMARKS['roas'], True, "{:.1f}"))
+
+# Select and reorder columns for display
+display_cols = ['channel', 'spend', 'attributed_revenue', 'CTR', 'CPC', 'ROAS']
+st.dataframe(channel_perf[display_cols].rename(columns={
+    'channel': 'Channel',
+    'spend': 'Spend',
+    'attributed_revenue': 'Attributed Rev'
+}), use_container_width=True)
+
 
 # Top campaigns
 st.subheader("🏆 Top Campaigns")
 top_campaigns = filtered.groupby(['channel', 'campaign'], as_index=False).agg({
-    'impressions': 'sum',
-    'clicks': 'sum',
-    'spend': 'sum',
-    'attributed_revenue': 'sum'
+    'impressions': 'sum', 'clicks': 'sum', 'spend': 'sum', 'attributed_revenue': 'sum'
 })
-top_campaigns['roas'] = np.where(
-    top_campaigns['spend'] > 0,
-    top_campaigns['attributed_revenue'] / top_campaigns['spend'],
-    np.nan
-)
+top_campaigns['roas'] = np.where(top_campaigns['spend'] > 0,
+                                 top_campaigns['attributed_revenue'] / top_campaigns['spend'], np.nan)
 st.dataframe(top_campaigns.sort_values("roas", ascending=False).head(20))
 
 # Scatter chart
 st.subheader("📊 Campaign Efficiency")
-fig2 = px.scatter(
-    top_campaigns,
-    x='spend', y='attributed_revenue',
-    color='channel', size='impressions',
-    hover_data=['campaign'],
-    title="Spend vs Attributed Revenue by Campaign"
-)
+fig2 = px.scatter(top_campaigns, x='spend', y='attributed_revenue',
+                  color='channel', size='impressions',
+                  hover_data=['campaign'],
+                  title="Spend vs Attributed Revenue by Campaign")
 st.plotly_chart(fig2, use_container_width=True)
 
 # Drill-down
 st.subheader("🔎 Drill-down: Campaign Performance")
-selected_campaign = st.selectbox(
-    "Choose a campaign", options=top_campaigns['campaign'].unique(), key="campaign_select"
-)
+selected_campaign = st.selectbox("Choose a campaign", top_campaigns['campaign'].unique(), key="campaign_select")
 if selected_campaign:
     camp_df = filtered[filtered['campaign'] == selected_campaign].sort_values('date')
-    fig3 = px.line(
-        camp_df, x='date', y=['spend', 'attributed_revenue'],
-        title=f"{selected_campaign} - Daily Spend vs Attributed Revenue"
-    )
+    fig3 = px.line(camp_df, x='date', y=['spend', 'attributed_revenue'],
+                   title=f"{selected_campaign} - Daily Spend vs Attributed Revenue")
     st.plotly_chart(fig3, use_container_width=True)
 
 # Export button
 st.subheader("⬇️ Export Filtered Data")
-st.download_button(
-    "Download as CSV",
-    filtered.to_csv(index=False).encode('utf-8'),
-    "filtered_marketing.csv",
-    "text/csv"
-)
+st.download_button("Download as CSV",
+                   filtered.to_csv(index=False).encode('utf-8'),
+                   "filtered_marketing.csv",
+                   "text/csv")
