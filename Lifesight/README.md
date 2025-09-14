@@ -87,4 +87,7 @@ Open your browser at http://localhost:8501
  🎉
 
 
- ![alt text](<Screenshot (48).png>)
+![alt text](<Screenshot (48).png>)
+
+## 🔗 Live demo
+- Live app: https://marketing-intelligence-dashboard-4u8pkyrdwf4rauch6n9htg.streamlit.app/
