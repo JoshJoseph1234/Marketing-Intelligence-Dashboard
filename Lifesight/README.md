@@ -85,3 +85,6 @@ streamlit run app.py
 
 Open your browser at http://localhost:8501
  🎉
+
+
+ ![alt text](<Screenshot (48).png>)
