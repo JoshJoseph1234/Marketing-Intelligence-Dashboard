@@ -37,9 +37,9 @@ def add_marketing_metrics(df):
 
 # ---------- STEP 4: LOAD BUSINESS DATA & MERGE ----------
 
-fb = load_marketing_csv("Lifesight/data/Facebook.csv", "Facebook")
-gg = load_marketing_csv("Lifesight/data/Google.csv", "Google")
-tt = load_marketing_csv("Lifesight/data/TikTok.csv", "TikTok")
+fb = load_marketing_csv("https://github.com/JoshJoseph1234/Marketing-Intelligence-Dashboard/blob/main/Lifesight/data/Facebook.csv", "Facebook")
+gg = load_marketing_csv("https://github.com/JoshJoseph1234/Marketing-Intelligence-Dashboard/blob/main/Lifesight/data/Google.csv", "Google")
+tt = load_marketing_csv("https://github.com/JoshJoseph1234/Marketing-Intelligence-Dashboard/blob/main/Lifesight/data/TikTok.csv", "TikTok")
 
 marketing = pd.concat([fb, gg, tt], ignore_index=True)
 marketing = add_marketing_metrics(marketing)
@@ -52,7 +52,7 @@ daily_marketing = marketing.groupby('date', as_index=False).agg({
 })
 daily_marketing = add_marketing_metrics(daily_marketing)
 
-business = pd.read_csv("data/Business.csv", parse_dates=['date'])
+business = pd.read_csv("https://github.com/JoshJoseph1234/Marketing-Intelligence-Dashboard/blob/main/Lifesight/data/business.csv", parse_dates=['date'])
 business.columns = business.columns.str.strip().str.lower().str.replace(" ", "_")
 for col in ['orders', 'new_orders', 'new_customers', 'total_revenue', 'gross_profit', 'cogs']:
     if col in business.columns:
